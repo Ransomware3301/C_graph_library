@@ -31,6 +31,10 @@
  */
 
 
+/* 
+ *    CHANGE THE HEADER FILE RELATIVE PATH IN RELATION TO YOUR FOLDER STRUCTURE 
+ *    (a.k.a. where the header file is situated) 
+ */
 #include "graph.h"
 
 
