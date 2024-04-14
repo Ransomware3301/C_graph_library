@@ -2,9 +2,8 @@
 A powerful and flexible C library for creating graphs, a mathematical tool with almost endless applications
 
 - - -
-# Theoretical Concepts and Notation
+# Brief Introduction
 
-## Brief Introduction
 Graphs are powerful mathematical tools used to represent any system that can be boiled down to a set of nodes and edges <br>
 (i.e. connections between nodes)
 
