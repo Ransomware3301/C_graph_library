@@ -109,6 +109,7 @@ graph_edge_list_t * find_edge_R(graph_edge_list_t*, id_t);
 
 Also, there's a particular linked list which stores ID data types (id_t) for both nodes and edges that could get deleted throughout the lifespan of a graph
 This enables the recycling of previously used node and edge IDs (NIDs and EIDs), wihch belonged to data that was deleted, and now these can be reused as IDs for newly created data.
+
 Since the <code>id_t</code> is defined as <code>unsigned int</code> and the ID $0$ is reserved as an "ERROR_ID", the maximum amount for both nodes and edges globally 
 is 4.294.967.295 ($2^{32} - 1$) unique NIDs and EIDs.
 
@@ -208,11 +209,11 @@ type_t;
  *   // IN file: "main.c"
  *   int a;
  *  
- *   a = *( (*int) safe_input(INT, 256, NULL) );   /* Creates memory block of 256B of type "void*", then it's casted as "int*" and
- *                                                    finally stored in the variable through a dereferencing operation*/
+ *   a = *( (*int) safe_input(INT, 256, NULL) );   // Creates memory block of 256B of type "void*", then it's casted as "int*" and
+ *                                                 // finally stored in the variable through a dereferencing operation
  *
- *   printf("OUTPUT: %d\n", a);   /* prints the variable "a" as an "int" */
- *  // END file: "main.c"
+ *   printf("OUTPUT: %d\n", a);   // prints the variable "a" as an "int"
+ *   // END file: "main.c"
  */
 
 void * safe_input(const type_t type, const unsigned long int bufsize, char *message);
@@ -233,7 +234,6 @@ void      save_graph(graph_t*, char*);
 
 ```
 src_node_label (edge_count) -> dest_node_label(edge_label, edge_weight),
- 
 ```
 
 Where:
