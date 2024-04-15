@@ -4,8 +4,8 @@ A powerful and flexible C library for creating graphs, a mathematical tool with 
 - - -
 # Brief Introduction
 
-Graphs are powerful mathematical tools used to represent any system that can be boiled down to a set of nodes and edges <br>
-(i.e. connections between nodes)
+Graphs are powerful mathematical tools used to represent any system that can be boiled down to a set of nodes and edges
+(i.e. connections between nodes).
 
 <br>
 
@@ -23,7 +23,7 @@ For more information, see the Wikipedia article page: https://en.wikipedia.org/w
 - - -
 # Graph Structural Definition
 
-The following C code describes the structure of each data type (graphs, nodes, edge lists and edges)
+The following C code describes the structure of each data type (graphs, nodes, edge lists and edges):
 
 A graph is defined as a linked list of nodes, thus its definition has a pointer to the next node and a "container" for the actual node data
 
@@ -62,7 +62,10 @@ typedef struct graph_edge_list
 graph_edge_list_t;
 ```
 
-And finally, each edge is defined as a struct containing the edge's label, weight and unique edge ID (abbreviated as EID)
+And finally, each edge is defined as a struct containing the edge's label, weight, unique edge ID (abbreviated as EID) and an array 
+of two endpoints IDs, which are the two nodes' IDs that each edge connects. 
+
+Conventionally, the NID in index 0 of the array is the source node's ID and the NID in index 1 is the destination node's ID.
 
 ```C
 /* Edge Definition */
@@ -80,7 +83,7 @@ graph_edge_t;
 
 # Available Functions
 
-The library is very flexible and has many built-in functions, organised in sections
+The library is very flexible and has many built-in functions, organised in sections.
 
 First, we have functions related to the structures of the graph, meaning that they are implemented to create, delete or modify data in graphs or even entire graphs
 These operate with both types of linked lists used in the code (i.e. graphs and edge lists) 
@@ -107,7 +110,7 @@ graph_edge_list_t * find_edge_R(graph_edge_list_t*, id_t);
 Also, there's a particular linked list which stores ID data types (id_t) for both nodes and edges that could get deleted throughout the lifespan of a graph
 This enables the recycling of previously used node and edge IDs (NIDs and EIDs), wihch belonged to data that was deleted, and now these can be reused as IDs for newly created data.
 Since the <code>id_t</code> is defined as <code>unsigned int</code> and the ID $0$ is reserved as an "ERROR_ID", the maximum amount for both nodes and edges globally 
-is 4.294.967.295 ($2^{32} - 1$) unique NIDs and EIDs
+is 4.294.967.295 ($2^{32} - 1$) unique NIDs and EIDs.
 
 ```C
 /*
