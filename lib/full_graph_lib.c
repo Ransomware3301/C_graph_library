@@ -12,11 +12,10 @@
  *                  - (UNARY) Vertex Contraction
  *                  - (UNARY) Edge Contraction
  *                  - (UNARY) Complement Graph
+ *                  - (UNARY) Minimum Spanning Tree (MST) with Dijkstra's Algorithm
  * 
  *                  - (BINARY) Disjoint Graph Union
  *                  - (BINARY) Cartesian Graph Product
- *                  - (BINARY) Tensor Graph Product
- *                  - (BINARY) Strong Graph Product
  *                  - (BINARY) Parallel Graph Composition
  *                  - (BINARY) Series Graph Composition
  * 
@@ -25,7 +24,7 @@
  *
  * 
  *  Made by:    Ransomware3301 (https://www.github.com/ransomware3301)
- *  Date:       14-03-2024
+ *  Date:       21-04-2024
  */
 
 
@@ -42,6 +41,8 @@
 #define NEWLINE_CHAR '\n'
 #define ZERO_CHAR '0'
 #define ERROR_ID 0
+#define DEFAULT_COPIED_EDGE_WEIGHT 0
+#define DEFAULT_COPIED_EDGE_LABEL "copied_edge"
 #define COMPLEMENTED_EDGE_DEFAULT_LABEL "complemented_edge"
 #define COMPLEMENTED_EDGE_DEFAULT_WEIGHT 0
 #define SERIES_EDGE_DEFAULT_LABEL "series_composition_edge"
@@ -49,6 +50,8 @@
 #define DUPLICATED_NODE_DEFAULT_LABEL_PREFIX "duplicated_node_"
 #define DEFAULT_LABEL_CARTESIAN_PRODUCT "cartesian_product_edge"
 #define DEFAULT_WEIGHT_CARTESIAN_PRODUCT 0
+
+#define ENABLE_DIJKSTRA_DEBUG
 
 
 /* ==== Type Definitions ==== */
@@ -99,10 +102,12 @@ id_list_t;
 /* Edge Definition */
 typedef struct graph_edge 
 {
-    int weight;
     id_t id;
+    int weight;
     char *label;
     id_t endpoint_ids[2];
+    /* For Dijkstra */
+    bool_t is_in_mst;
 }
 graph_edge_t;
 
@@ -122,6 +127,10 @@ typedef struct graph_node
     id_t id;
     char *label;
     graph_edge_list_t *edges;
+    /* For Dijkstra */
+    unsigned long int dist;
+    id_t prev_eid;
+    id_t prev_nid;
 }
 graph_node_t;
 
@@ -138,11 +147,12 @@ graph_t;
 /* ==== Global Variables ==== */
 
 
-id_t global_node_id = 1;            /* Global index counter for nodes */
-id_list_t *revoked_node_ids;        /* Stack (FIFO) of node IDs that can be recycled for new nodes */
-
 id_t global_edge_id = 1;            /* Global index counter for nodes */
 id_list_t *revoked_edge_ids;        /* Stack (FIFO) of edge IDs that can be recycled for new edges */
+
+
+id_t global_node_id = 1;            /* Global index counter for nodes */
+id_list_t *revoked_node_ids;        /* Stack (FIFO) of node IDs that can be recycled for new nodes */
 
 
 /* ==== Function Declarations ==== */
@@ -151,6 +161,8 @@ id_list_t *revoked_edge_ids;        /* Stack (FIFO) of edge IDs that can be recy
 /* I/O */
 void                print_node_connections(graph_t*, graph_node_t*);
 void                print_graph(graph_t*);
+void                print_dijkstra(graph_t*, id_t);
+void                print_dijkstra_input(graph_t*);
 void                print_graph_matrix(graph_t*);
 void                print_all_node_ids(graph_t*);
 graph_edge_list_t * input_edge_list(id_t);
@@ -176,11 +188,12 @@ void           change_node_label(graph_t*, id_t, char*);
 void           change_edge_label(graph_t*, id_t, char*);
 graph_t *      change_duplicated_node_labels(graph_t*, char*);
 void           delete_edge_from_node(graph_t*, id_t, id_t);
+graph_t *      delete_all_duplicate_edges(graph_t*);
 
 
 /* Miscellaneous */
-id_t   set_node_id(void);
 id_t   set_edge_id(void);
+id_t   set_node_id(void);
 id_t   select_node_id(graph_t*, char*, char*);
 int    graph_dim(graph_t*);
 int    graph_dim_R(graph_t*);
@@ -188,8 +201,6 @@ int    edge_list_dim(graph_edge_list_t*);
 int    edge_list_dim_R(graph_edge_list_t*);
 int *  create_graph_matrix(graph_t*);
 int    autoloop_count(graph_edge_list_t*);
-bool_t exists_node_from_id(id_t);
-bool_t exists_edge_from_id(id_t);
 char * filter(char*, char);
 char * int_to_string(long int);
 char * strconcat(char*, char*);
@@ -226,6 +237,8 @@ bool_t      find_revoked_id_R(id_list_t*, id_t);
 graph_t * vertex_contraction(graph_t*, id_t, id_t);
 graph_t * vertex_contraction_input(graph_t*);
 graph_t * complement_graph(graph_t*);
+graph_t * dijkstra_mst(graph_t*, id_t);
+graph_t * dijkstra_mst_input(graph_t*);
 
 
 /* Binary Graph Operations */
@@ -242,91 +255,23 @@ graph_t * series_graph_composition_input(graph_t*, graph_t*);
 
 int main(int argc, char **argv)
 {   
-    graph_t *graph1, *graph2;
-    graph_t *parallel, *series;
-    graph_t *cartesian;
-    graph_t *copy1, *copy2;
-
+    graph_t *graph1;
 
     graph1 = load_graph("graph1_desc.txt");
-    graph2 = load_graph("graph2_desc.txt");
 
-    if (graph1 && graph2)
+    if (graph1)
     {
         printf("\n//////// GRAPH_1 ////////\n");
         print_graph(graph1);
         printf("\n");
 
-        printf("\n//////// GRAPH_2 ////////\n");
-        print_graph(graph2);
-        printf("\n");
 
-
-        printf("\n//////// SERIES-PARALLEL COMPOSITIONS ////////\n");
-        
-        copy1 = create_graph_copy(graph1);
-        copy2 = create_graph_copy(graph2);
-
-        series = series_graph_composition(
-            copy1, 
-            copy2,
-            select_node_id(copy1, 
-                "\n[CURRENT OPERATION]\n - Series Graph Composition\n" \
-                "\nAvailable node IDs (NIDs):\n", 
-                "Select source node ID: "
-            ),
-            select_node_id(copy2, 
-                "\n[CURRENT OPERATION]\n - Series Graph Composition\n" \
-                "\nAvailable node IDs (NIDs):\n", 
-                "Select sink node ID: "
-            )
-        );
-        printf("\n//////// SERIES ////////\n");
-        print_graph(series);
-
-        delete_graph(copy1);
-        delete_graph(copy2);
-
-
-        copy1 = create_graph_copy(graph1);
-        copy2 = create_graph_copy(graph2);
-
-        parallel = parallel_graph_composition(
-            copy1,
-            copy2,
-            select_node_id(copy1, 
-                "\n[CURRENT OPERATION]\n - Parallel Graph Composition\n" \
-                "\nAvailable node IDs (NIDs):\n", 
-                "Select source node ID of first graph: "
-            ),
-            select_node_id(copy1, 
-                "\n[CURRENT OPERATION]\n - Parallel Graph Composition\n" \
-                "\nAvailable node IDs (NIDs):\n", 
-                "Select sink node ID of first graph: "
-            ),
-            select_node_id(copy2,
-                "\n[CURRENT OPERATION]\n - Parallel Graph Composition\n" \
-                "\nAvailable node IDs (NIDs):\n",  
-                "Select source node ID of second graph: "
-            ),
-            select_node_id(copy2, 
-                "\n[CURRENT OPERATION]\n - Parallel Graph Composition\n" \
-                "\nAvailable node IDs (NIDs):\n",  
-                "Select sink node ID of second graph: "
-            )
-        );
-        printf("\n//////// PARALLEL ////////\n");
-        print_graph(parallel);
-
-
-        printf("\n//////// CARTESIAN PRODUCT ////////\n");
-        cartesian = cartesian_graph_product(graph1, graph2);
-        print_graph(cartesian);
+        printf("\n//////// MST of GRAPH_1 ////////\n");
+        print_dijkstra_input(graph1);
         printf("\n");
 
 
         delete_graph(graph1);
-        delete_graph(graph2);
     }
 
     return 0;
@@ -346,12 +291,12 @@ void print_node_connections(graph_t *graph, graph_node_t *node)
     graph_node_t *temp;
 
 
-    if (node)
+    if (graph && node)
     {
         printf("\nNode [%s] connections:\n", node->label);
         printf("(NID = 'Node ID', EID = 'Edge ID')\n");
 
-        printf("\n\t[%s] (NID=%d)\n", node->label, node->id);
+        printf("\n\t[%s] (NID=%u)\n", node->label, node->id);
 
         if (node->edges)
         {
@@ -368,7 +313,7 @@ void print_node_connections(graph_t *graph, graph_node_t *node)
 
                 if (temp)
                 {
-                    printf("\t |-------------> [%s] (NID=%d)\n", temp->label, temp->id);
+                    printf("\t |-------------> [%s] (NID=%u)\n", temp->label, temp->id);
                 }
                 else
                 {
@@ -413,6 +358,105 @@ void print_graph(graph_t *graph)
     {
         printf("\n\t[EMPTY GRAPH]\n\n");
     }
+}
+
+
+/* 
+ *  Prints to terminal the Minimum Spanning Tree with root the source node ID (src_nid)
+ *  and only the edges that belong to such tree
+ */
+void print_dijkstra(graph_t *graph, id_t src_nid)
+{
+    graph_t *ptr;
+    graph_node_t *temp;
+    graph_edge_list_t *edges;
+
+
+    if (graph)
+    {
+        graph = dijkstra_mst(graph, src_nid);
+
+        printf("\n[Dijkstra] Minimum Spanning Tree (MST) from Source Node [%s]:\n", (get_node_from_id(graph, src_nid))->label);
+
+        ptr = graph;
+
+        while (ptr)
+        {
+            printf("\nNode [%s] connections:\n", ptr->node.label);
+            printf("(NID = 'Node ID', EID = 'Edge ID')\n");
+            printf("\n\t[%s] (NID=%u)\n", ptr->node.label, ptr->node.id);
+
+            if (ptr->node.edges)
+            {
+                edges = ptr->node.edges;
+
+                while (edges)
+                {
+                    if (edges->edge.is_in_mst == true)
+                    {
+                        temp = get_node_from_id(graph, edges->edge.endpoint_ids[1]);
+
+                        printf("\t | \n");
+                        printf("\t | %s\n", edges->edge.label);
+                        printf("\t | (W=%d, EID=%u)\n", edges->edge.weight, edges->edge.id);
+                        printf("\t | \n");
+
+                        if (temp)
+                        {
+                            printf("\t |-------------> [%s] (NID=%u)\n", temp->label, temp->id);
+                        }
+                        else
+                        {
+                            printf("\t |-------------> [NULL]\n");
+                        }
+                    }
+
+                    edges = edges->next;
+                }
+
+                printf("\n");
+            }
+            else
+            {
+                printf("\t | \n");
+                printf("\t |-------------> [NO OUTWARD EDGES]\n\n");
+            }
+
+            ptr = ptr->next;
+        }
+    }
+    else
+    {
+        printf("\n\t[EMPTY GRAPH]\n");
+    }
+}
+
+
+/* 
+ *  Prints to terminal the Minimum Spanning Tree with root the source node ID (src_nid)
+ *  and only yhe edges that belong to such tree. 
+ *  Also, the src_nid is asked to the user at runtime
+ */
+void print_dijkstra_input(graph_t *graph)
+{
+    id_t src_nid;
+
+
+    if (graph)
+    {
+        printf("\n[CURRENT OPERATION]\n - Calculating the Minimum Spanning Tree (MST) using Dijkstra's Algorithm\n");
+
+        printf("\nAvailable node IDs (NIDs):\n");
+        print_all_node_ids(graph);
+
+        do
+        {
+            src_nid = *((id_t*)safe_input(U_INT, STRING_BUFFER_SIZE, "Insert source node ID: "));
+        } 
+        while (find_node(graph, src_nid) == NULL);
+
+        print_dijkstra(graph, src_nid);
+    }   
 }
 
 
@@ -477,7 +521,7 @@ void print_graph_matrix(graph_t *graph)
 void print_all_node_ids(graph_t *graph)
 {   
     while (graph)
-    {
+    {        
         printf(" - [%s] (NID=%d)\n", graph->node.label, graph->node.id);
         graph = graph->next;
     }
@@ -496,54 +540,34 @@ graph_edge_list_t * input_edge_list(id_t node_id)
     int weight; 
     char *label;
     id_t endpoint_ids[2];
-    int tmp;
     int quantity;
     int i;
 
 
     edges = NULL;
-
-    /* Asking for the quantity of edges to insert next */
-    do
-    {
-        /* printf("Insert amount of edges to input: ");
-        scanf("%d", &quantity); */
-        quantity = *((int*)safe_input(INT, STRING_BUFFER_SIZE, "Insert amount of edges to input: "));
-    } while (quantity < 0);
-    
     i = 0;
 
+    /* Asking for the quantity of edges to insert next */
+    quantity = *((int*)safe_input(INT, STRING_BUFFER_SIZE, "Insert amount of edges to input: "));
+    
     while (i < quantity)
     {   
         /* Weight input */
         printf("Insert edge #%d weight: ", i + 1);
-        /* scanf("%d", &weight); */
         weight = *((int*)safe_input(INT, STRING_BUFFER_SIZE, NULL));
 
         /* Label input */
         do
         {
-            /* label = get_string_input("Insert edge label: "); */
             label = (char*)safe_input(STRING, STRING_BUFFER_SIZE, "Insert edge label: ");
         } 
         while (strlen(label) == 0);
 
         /* Endpoint IDs input */
-        do
-        {
-            printf("Insert edge #%d final endpoint ID (SELF_NID=%d): ", i + 1, node_id);
-            /* scanf("%d", &tmp); */
-            tmp = *((int*)safe_input(INT, STRING_BUFFER_SIZE, NULL));
-
-            if (tmp < 0)
-            {
-                printf("[input_edge_list()] ERROR: Final Endpoint ID must be positive\n\n");
-            }
-        } 
-        while (tmp < 0);
+        printf("Insert edge #%d final endpoint ID (SELF_NID=%d): ", i + 1, node_id);
 
         endpoint_ids[0] = node_id;
-        endpoint_ids[1] = (id_t) tmp;
+        endpoint_ids[1] = *((id_t*)safe_input(U_INT, STRING_BUFFER_SIZE, NULL));        
 
         edges = append_edge(edges, create_new_edge(weight, label, endpoint_ids));
         i++;
@@ -568,7 +592,6 @@ graph_node_t input_node(void)
     /* Label input */
     do
     {
-        /* label = get_string_input("Insert node label: "); */
         label = (char*)safe_input(STRING, STRING_BUFFER_SIZE, "Insert node label: ");
     } 
     while (strlen(label) == 0); 
@@ -595,11 +618,8 @@ graph_t * input_graph(void)
     graph = NULL;
 
     /* Input of graph dimension */
-    printf("\n");
     do
     {
-        /* printf("Insert graph size: ");
-        scanf("%d", &graph_dim); */
         graph_dim = *((int*)safe_input(INT, STRING_BUFFER_SIZE, "Insert graph size: "));
     } 
     while (graph_dim < 0);
@@ -707,21 +727,6 @@ void * safe_input(const type_t type_selector, const unsigned long int bufsize, c
                         }
                         else
                         {
-                            /* 
-                             *  OLD METHOD (which "shouldn't" work but actually does):
-                             *
-                             *          strcpy(result, buf); 
-                             * 
-                             *  -   It "shouldn't" work because result is a void*, and not a char*
-                             *      and because of this, I believe it works but under an undefined 
-                             *      behaviour state which could make the whole copying process unsafe, 
-                             *      thus defeating the whole purpouse of the "safe_input()" function.
-                             * 
-                             *  -   Therefore, the switch from using strcpy() to memcpy() is
-                             *      justified by the fact that the latter actually deals with void*
-                             *      pointers, that are assumed as being signed char*, thus the use
-                             *      of result as a destination is actually expected by the function
-                             */
                             filtered_buf = filter(buf, NEWLINE_CHAR);
                             memcpy(result, filtered_buf, strlen(filtered_buf));
 
@@ -1064,10 +1069,13 @@ graph_edge_t create_new_edge(int weight, char *label, id_t endpoint_ids[2])
  */
 graph_t * create_graph_copy(graph_t *old_graph)
 {
-    graph_t *graph, *ptr, *ptr2, *ptr3;
-    graph_edge_list_t *ptr4;
+    graph_t *graph, *ptr, *ptr2;
+    graph_t *old_ptr, *old_ptr2;
+    graph_node_t *node;
+    graph_edge_list_t *ptr3;
     id_t endpoints[2];
-    int i, j, k, dim;
+    bool_t found;
+    int i, j, dim;
     int *old_mat;
 
 
@@ -1092,8 +1100,73 @@ graph_t * create_graph_copy(graph_t *old_graph)
 
         dim = graph_dim(old_graph);
         ptr = graph;
+        old_ptr = old_graph;
         i = 0;
 
+        while (ptr && old_ptr)
+        {
+            endpoints[0] = ptr->node.id;
+            ptr2 = graph;
+            old_ptr2 = old_graph;
+            j = 0;
+
+            while (ptr2 && old_ptr2)
+            {
+                if (*(old_mat + j + (i * dim)) == 1)
+                {
+                    endpoints[1] = ptr2->node.id;
+
+                    node = get_node_from_id(old_graph, old_ptr->node.id);
+                    ptr3 = node->edges;
+                    found = false;
+
+                    while (ptr3 && !found)
+                    {
+                        if (ptr3->edge.endpoint_ids[1] == old_ptr2->node.id)
+                        {
+                            found = true;
+                        }
+                        else
+                        {
+                            ptr3 = ptr3->next;
+                        }
+                    }
+
+                    if (found)
+                    {
+                        ptr->node.edges = append_edge(
+                            ptr->node.edges,
+                            create_new_edge(
+                                ptr3->edge.weight,
+                                ptr3->edge.label,
+                                endpoints
+                            )
+                        );
+                    }
+                    else
+                    {
+                        ptr->node.edges = append_edge(
+                            ptr->node.edges,
+                            create_new_edge(
+                                DEFAULT_COPIED_EDGE_WEIGHT,
+                                DEFAULT_COPIED_EDGE_LABEL,
+                                endpoints
+                            )
+                        );
+                    }
+                }
+
+                ptr2 = ptr2->next;
+                old_ptr2 = old_ptr2->next;
+                j++;
+            }
+
+            ptr = ptr->next;
+            old_ptr = old_ptr->next;
+            i++;
+        }
+
+        /*
         while (ptr)
         {
             endpoints[0] = ptr->node.id;
@@ -1140,6 +1213,7 @@ graph_t * create_graph_copy(graph_t *old_graph)
             ptr = ptr->next;
             i++;
         }
+        */
     }
 
     return graph;
@@ -1185,6 +1259,9 @@ id_t get_id_from_node(graph_node_t *node)
 /*
  *  Given a node label belonging to a node of the given graph,
  *  it returns the corresponding node ID
+ * 
+ *  In case there's duplicated labels, it returns the ID of the
+ *  first node found in the graph
  */
 id_t get_id_from_node_label(graph_t *graph, char *label)
 {
@@ -1349,12 +1426,59 @@ void delete_edge_from_node(graph_t *graph, id_t node_id, id_t edge_id)
 
 
 /*
- *  Sets the node ID of the node the function is called on
- *  and proceeds to increment the global_node_id counter 
+ *  Given a graph, it removes any duplicated edge in each node
+ *  A duplicated edge is defined as having the same endpoint NIDs
  */
-id_t set_node_id(void)
+graph_t * delete_all_duplicate_edges(graph_t *graph)
 {
-    return global_node_id++;
+    graph_t *ptr;
+    graph_edge_list_t *edges, *edges2, *del;
+
+
+    if (graph)
+    {
+        ptr = graph;
+
+        while (ptr)
+        {
+            edges = ptr->node.edges;
+
+            while (edges)
+            {
+                edges2 = ptr->node.edges;
+
+                while (edges2)
+                {
+                    if (edges->edge.id != edges2->edge.id)
+                    {
+                        if (
+                            edges->edge.endpoint_ids[0] == edges2->edge.endpoint_ids[0] 
+                            && edges->edge.endpoint_ids[1] == edges2->edge.endpoint_ids[1] 
+                        )
+                        {
+                            del = edges2;
+                            edges2 = edges2->next;
+                            ptr->node.edges = delete_edge(ptr->node.edges, del->edge.id);
+                        }
+                        else
+                        {
+                            edges2 = edges2->next;
+                        }
+                    }
+                    else
+                    {
+                        edges2 = edges2->next;
+                    }
+                }
+
+                edges = edges->next;
+            }
+
+            ptr = ptr->next;
+        }
+    }
+
+    return graph;
 }
 
 
@@ -1365,6 +1489,16 @@ id_t set_node_id(void)
 id_t set_edge_id(void)
 {
     return global_edge_id++;
+}
+
+
+/*
+ *  Sets the node ID of the node the function is called on
+ *  and proceeds to increment the global_node_id counter 
+ */
+id_t set_node_id(void)
+{
+    return global_node_id++;
 }
 
 
@@ -1575,70 +1709,6 @@ int autoloop_count(graph_edge_list_t *edges)
     }
 
     return count;
-}
-
-
-/*
- *  Looks up if the given node_id exists, meaning that it's
- *  currently in use for a node
- */
-bool_t exists_node_from_id(id_t node_id)
-{
-    id_list_t *ptr;
-    bool_t exists;
-
-
-    exists = false;
-
-    if (node_id <= global_node_id)
-    {
-        exists = true;
-        ptr = revoked_node_ids;
-
-        while (ptr && (ptr->id != node_id))
-        {
-            ptr = ptr->next;
-        }
-
-        if (ptr)
-        {
-            exists = false;
-        }
-    }
-
-    return exists;
-}
-
-
-/*
- *  Looks up if the given edge_id exists, meaning that it's
- *  currently in use for an edge
- */
-bool_t exists_edge_from_id(id_t edge_id)
-{
-    id_list_t *ptr;
-    bool_t exists;
-
-
-    exists = false;
-
-    if (edge_id <= global_edge_id)
-    {
-        exists = true;
-        ptr = revoked_edge_ids;
-
-        while (ptr && (ptr->id != edge_id))
-        {
-            ptr = ptr->next;
-        }
-
-        if (ptr)
-        {
-            exists = false;
-        }
-    }
-
-    return exists;
 }
 
 
@@ -2042,7 +2112,7 @@ graph_edge_list_t * delete_edge(graph_edge_list_t *edges, id_t id)
     graph_edge_list_t *del, *prev;
 
 
-    if (edges && exists_edge_from_id(id))
+    if (edges)
     {
         prev = NULL; 
         del = edges;
@@ -2124,7 +2194,7 @@ graph_edge_list_t * find_edge(graph_edge_list_t *edges, id_t id)
  *  Returns a pointer to the edge in edges list if the edge with ID id
  *  was found, NULL otherwise
  * 
- * (RECURSIVE)
+ *  (RECURSIVE)
  */
 graph_edge_list_t * find_edge_R(graph_edge_list_t *ptr, id_t id)
 {
@@ -2291,7 +2361,7 @@ bool_t find_revoked_id(id_list_t *list, id_t id)
  *  Returns 'true' (1 but bool_t) if the given ID 'id' is found in
  *  the ID list, false (0 but bool_t) otherwise
  * 
- * (RECURSIVE)
+ *  (RECURSIVE)
  */
 bool_t find_revoked_id_R(id_list_t *ptr, id_t id)
 {
@@ -2339,32 +2409,32 @@ graph_t * vertex_contraction(graph_t *graph, id_t first_node_id, id_t second_nod
 
     if (merge_node && donor_node)
     {
-        /* If it exists, remove the edge pointing from the merge_node to the donor_node */
+        /* If it exists, remove any edges pointing from the merge_node to the donor_node */
         ptr = merge_node->edges;
 
-        while (ptr && (ptr->edge.endpoint_ids[1] != second_node_id))
+        while (ptr)
         {
+            if (ptr->edge.endpoint_ids[1] == second_node_id)
+            {
+                delete_edge_from_node(graph, first_node_id, ptr->edge.id);
+            }
+
             ptr = ptr->next;
         }
 
-        if (ptr)
-        {
-            delete_edge_from_node(graph, first_node_id, ptr->edge.id);
-        }
-
-        /* If it exists, remove the edge pointing from the donor_node to the merge_node */
+        /* If it exists, remove any edges pointing from the donor_node to the merge_node */
         ptr = donor_node->edges;
         
-        while (ptr && (ptr->edge.endpoint_ids[1] != first_node_id))
+        while (ptr)
         {
+            if (ptr->edge.endpoint_ids[1] == first_node_id)
+            {
+                delete_edge_from_node(graph, second_node_id, ptr->edge.id);
+            }
+
             ptr = ptr->next;
         }
-
-        if (ptr)
-        {
-            delete_edge_from_node(graph, second_node_id, ptr->edge.id);
-        }
-
+        
         /*
         *  For each edge that points OUTWARDS from the donor_node, append
         *  it to the merge_node and then change each new edge's beginning node ID 
@@ -2440,7 +2510,7 @@ graph_t * vertex_contraction(graph_t *graph, id_t first_node_id, id_t second_nod
 
 
 /* 
- *  (1.1) - Only performs the vertex contraction operation
+ *  (1.2) - Performs the vertex contraction operation on an user input provided at runtime
  */
 graph_t * vertex_contraction_input(graph_t *graph)
 {
@@ -2550,6 +2620,234 @@ graph_t * complement_graph(graph_t *graph)
 
 
 /*
+ *  Given a graph and a source node, the function returns the Minimum Spanning Tree
+ *  (MST) from the given source node, calculated using Dijkstra's Algorithm 
+ */
+/* 
+ *  (1.1) - Returns the MST from the given source node 
+ */
+graph_t * dijkstra_mst(graph_t *graph, id_t src_id)
+{
+    graph_t *mst, *src, *ptr;
+    graph_node_t *curr, *ptr2;
+    graph_edge_t *mst_edge;
+    graph_edge_list_t *edges;
+    bool_t found_neg_w, initialized;
+    int min_dist, dim, i;
+
+
+    mst = NULL;
+
+    if (graph && (src = find_node(graph, src_id)))
+    {
+        found_neg_w = false;
+        ptr = graph;
+
+        while (ptr && !found_neg_w)
+        {
+            edges = ptr->node.edges;
+
+            while (edges && !found_neg_w)
+            {
+                if (edges->edge.weight < 0)
+                {
+                    found_neg_w = true;
+                }
+
+                edges = edges->next;
+            }
+
+            ptr = ptr->next;
+        }
+
+        if ( !found_neg_w )
+        {
+            /* Initialization */
+            ptr = graph;
+
+            while (ptr)
+            {
+                ptr->node.dist = -1;
+                ptr->node.prev_eid = ERROR_ID;
+                ptr->node.prev_nid = ERROR_ID;
+
+                ptr = ptr->next;
+            }
+
+            src->node.dist = 0;
+
+            /* Beginning of algorithm */
+            /* Debug */
+            #ifdef ENABLE_DIJKSTRA_DEBUG
+                printf("\n<<< [DEBUG LOG START] >>>\n");
+            #endif
+
+            curr = &(src->node);
+            dim = graph_dim(graph);
+            i = 0;
+
+            while (i < dim)
+            {
+                /* Debug */
+                #ifdef ENABLE_DIJKSTRA_DEBUG
+                    printf("\nPREV_MST_NODE_ADDED: %s\n", curr->label);
+                #endif
+
+                mst = append_node(mst, *(curr));
+                ptr = mst;
+                initialized = false;
+
+                while (ptr)
+                {
+                    /* Debug */
+                    #ifdef ENABLE_DIJKSTRA_DEBUG
+                        printf("\t(MST)   NODE: %s | DIST: %lu\n", 
+                            ptr->node.label, 
+                            ptr->node.dist
+                        );
+                    #endif
+                    
+                    edges = ptr->node.edges;
+
+                    while (edges)
+                    {
+                        if (find_node(mst, edges->edge.endpoint_ids[1]) == NULL)
+                        {
+                            ptr2 = get_node_from_id(graph, edges->edge.endpoint_ids[1]);
+
+                            if (ptr2->dist > ptr->node.dist + edges->edge.weight)
+                            {
+                                /* Debug */
+                                #ifdef ENABLE_DIJKSTRA_DEBUG
+                                    printf("\t ==> DIST OF NODE [%s] CHANGED: %lu --> ",
+                                        ptr2->label,
+                                        ptr2->dist
+                                    );
+                                #endif
+
+                                ptr2->dist = ptr->node.dist + edges->edge.weight;
+                                ptr2->prev_eid = edges->edge.id;
+                                ptr2->prev_nid = ptr->node.id;
+                                
+                                /* Debug */
+                                #ifdef ENABLE_DIJKSTRA_DEBUG
+                                    printf("%lu\n", ptr2->dist);
+                                #endif
+                            }
+
+                            if ( !initialized )
+                            {
+                                min_dist = ptr2->dist;
+                                if (ptr2->prev_eid != ERROR_ID && ptr2->prev_nid != ERROR_ID)
+                                {
+                                    mst_edge = &((find_edge((find_node(mst, ptr2->prev_nid))->node.edges, ptr2->prev_eid))->edge);    
+                                }
+
+                                initialized = true;
+
+                                /* Debug */
+                                #ifdef ENABLE_DIJKSTRA_DEBUG
+                                    printf("\t ==> (INIT) mst_edge: [%s] --(%s)--> [%s]\n",
+                                        (get_node_from_id(graph, mst_edge->endpoint_ids[0]))->label,
+                                        mst_edge->label,
+                                        (get_node_from_id(graph, mst_edge->endpoint_ids[1]))->label
+                                    );
+                                #endif
+                            }
+
+                            #ifdef ENABLE_DIJKSTRA_DEBUG
+                                printf("\t(ITER)  [%s] (d=%lu) --(%s, w=%d)--> [%s] (d=%lu)\n", 
+                                    ptr->node.label,
+                                    ptr->node.dist,
+                                    edges->edge.label,
+                                    edges->edge.weight,
+                                    ptr2->label,
+                                    ptr2->dist
+                                );
+                            #endif
+
+                            if (ptr2->dist < min_dist)
+                            {
+                                min_dist = ptr2->dist;
+                                mst_edge = &(edges->edge);
+                                ptr2->prev_eid = mst_edge->id;
+                                ptr2->prev_nid = mst_edge->endpoint_ids[0];
+                                
+                                /* Debug */
+                                #ifdef ENABLE_DIJKSTRA_DEBUG
+                                    printf("\t ==> (FOUND)  mst_edge: [%s] --(%s)--> [%s]\n",
+                                        (get_node_from_id(graph, mst_edge->endpoint_ids[0]))->label,
+                                        mst_edge->label,
+                                        (get_node_from_id(graph, mst_edge->endpoint_ids[1]))->label
+                                    );
+                                #endif
+                            }
+                        }
+
+                        edges = edges->next;
+                    }
+
+                    ptr = ptr->next;
+                }
+
+                /* Debug */
+                #ifdef ENABLE_DIJKSTRA_DEBUG
+                    printf("\n\t[+] mst_edge: [%s] --(%s)--> [%s]\n\n",
+                        (get_node_from_id(graph, mst_edge->endpoint_ids[0]))->label,
+                        mst_edge->label,
+                        (get_node_from_id(graph, mst_edge->endpoint_ids[1]))->label
+                    );
+                #endif
+
+                mst_edge->is_in_mst = true;
+
+                curr = get_node_from_id(graph, mst_edge->endpoint_ids[1]);
+                i++;
+            }
+
+            /* Debug */
+            #ifdef ENABLE_DIJKSTRA_DEBUG
+                printf("\n<<< [DEBUG LOG END] >>>\n");
+            #endif
+        }
+        else
+        {
+            printf("[dijkstra_mst()] ERROR: Dijkstra's Algorithm can only be applied on graphs with positive edge weights\n");
+        }
+    }
+
+    return graph;
+}
+
+/*
+ *  (1.2) - Returns the MST from the source node selected by the user
+ */
+graph_t * dijkstra_mst_input(graph_t *graph)
+{
+    id_t src_nid;
+
+
+    if (graph)
+    {
+        printf("\n[CURRENT OPERATION]\n - Calculating the Minimum Spanning Tree (MST) using Dijkstra's Algorithm\n");
+        
+        printf("\nAvailable node IDs (NIDs):\n");
+        print_all_node_ids(graph);
+
+        do
+        {
+            src_nid = *((id_t*)safe_input(U_INT, STRING_BUFFER_SIZE, "Insert source node ID: "));
+        } 
+        while (find_node(graph, src_nid) == NULL);
+
+        return dijkstra_mst(graph, src_nid);
+    }
+
+    return NULL;
+}
+
+
+/*
  *  In graph theory, a branch of mathematics, the disjoint union of graphs is an operation 
  *  that combines two or more graphs to form a larger graph. It is analogous to the disjoint 
  *  union of sets, and is constructed by making the vertex set of the result be the disjoint
@@ -2629,8 +2927,6 @@ graph_t * cartesian_graph_product(graph_t *graph1, graph_t *graph2)
                 
                 i++;
             }
-
-            /* MISSING: COPYING THE EDGES SCHEMA IN graph1 ONTO THE "j-th layer", WHICH IS A SET OF NODES */
 
             i = 0;
 
@@ -2749,8 +3045,6 @@ graph_t * parallel_graph_composition(graph_t *graph1, graph_t *graph2, id_t sour
         && find_node(graph2, sink_2) != NULL
     )
     {
-        printf("\n[CURRENT OPERATION]\n - Parallel Graph Composition\n");
-
         /* 
          *  (PARALLEL COMPOSITION)
          *  After selecting the source and sink node for both graphs, proceed
@@ -2832,8 +3126,6 @@ graph_t * series_graph_composition(graph_t *graph1, graph_t *graph2, id_t source
 
     if (left_node && right_node)
     {
-        printf("\n[CURRENT OPERATION]\n - Series Graph Composition\n");
-
         union_graph = disjoint_graph_union(graph1, graph2);
 
         /* left_node --[edge]--> right_node */
@@ -2870,7 +3162,7 @@ graph_t * series_graph_composition(graph_t *graph1, graph_t *graph2, id_t source
     return union_graph;
 }
 
-/* 
+/*
  *  (2.2) - Gets both the source ID from the first graph and sink ID from the second, then 
  *          the series composition operation 
  */
