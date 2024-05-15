@@ -37,7 +37,8 @@ typedef struct graph
 graph_t;
 ```
 
-Each node is defined as a struct containing the node's label, unique node ID (abbreviated as NID) and a linked list of edges
+Each node is defined as a struct containing the node's label, unique node ID (abbreviated as NID) and a linked list of edges, plus
+some additional parameters used when computing the MST from a source node using Dijkstra's Algorithm.
 
 ```C
 /* Node Definition */
@@ -46,6 +47,10 @@ typedef struct graph_node
     id_t id;
     char *label;
     graph_edge_list_t *edges;
+    /* For Dijkstra */
+    unsigned long int dist;
+    id_t prev_eid;
+    id_t prev_nid;
 }
 graph_node_t;
 ```
@@ -66,15 +71,18 @@ And finally, each edge is defined as a struct containing the edge's label, weigh
 of two endpoints IDs, which are the two nodes' IDs that each edge connects. 
 
 Conventionally, the NID in index 0 of the array is the source node's ID and the NID in index 1 is the destination node's ID.
+Also there's a flag "bool_t is_in_mst" used to mark an edge belonging to an MST, calculated with Dijkstra's Algorithm.
 
 ```C
 /* Edge Definition */
 typedef struct graph_edge 
 {
-    int weight;
     id_t id;
+    int weight;
     char *label;
     id_t endpoint_ids[2];
+    /* For Dijkstra */
+    bool_t is_in_mst;
 }
 graph_edge_t;
 ```
@@ -146,6 +154,8 @@ Then, we have functions related to input/output of graphs and generic actions on
 /* I/O */
 void                print_node_connections(graph_t*, graph_node_t*);
 void                print_graph(graph_t*);
+void                print_dijkstra(graph_t*, id_t);
+void                print_dijkstra_input(graph_t*);
 void                print_graph_matrix(graph_t*);
 void                print_all_node_ids(graph_t*);
 graph_edge_list_t * input_edge_list(id_t);
@@ -166,6 +176,7 @@ void           change_node_label(graph_t*, id_t, char*);
 void           change_edge_label(graph_t*, id_t, char*);
 graph_t *      change_duplicated_node_labels(graph_t*, char*);
 void           delete_edge_from_node(graph_t*, id_t, id_t);
+graph_t *      delete_all_duplicate_edges(graph_t*);
 
 ```
 
@@ -260,8 +271,8 @@ In particular, the last three functions are helper functions needed to perform o
 ```C
 
 /* Miscellaneous */
-id_t   set_node_id(void);
 id_t   set_edge_id(void);
+id_t   set_node_id(void);
 id_t   select_node_id(graph_t*, char*, char*);
 int    graph_dim(graph_t*);
 int    graph_dim_R(graph_t*);
@@ -269,12 +280,9 @@ int    edge_list_dim(graph_edge_list_t*);
 int    edge_list_dim_R(graph_edge_list_t*);
 int *  create_graph_matrix(graph_t*);
 int    autoloop_count(graph_edge_list_t*);
-bool_t exists_node_from_id(id_t);
-bool_t exists_edge_from_id(id_t);
 char * filter(char*, char);
 char * int_to_string(long int);
 char * strconcat(char*, char*);
-
 ```
 
 And finally there are some specific operations that involve one or two graphs, which are unary and binary operations
@@ -285,6 +293,8 @@ These are the currently available operations on graphs:
 graph_t * vertex_contraction(graph_t*, id_t, id_t);
 graph_t * vertex_contraction_input(graph_t*);
 graph_t * complement_graph(graph_t*);
+graph_t * dijkstra_mst(graph_t*, id_t);
+graph_t * dijkstra_mst_input(graph_t*);
 
 
 /* Binary Graph Operations */
