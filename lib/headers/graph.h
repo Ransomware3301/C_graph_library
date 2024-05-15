@@ -1,5 +1,5 @@
 /*
- *  File Type:  HEADER FILE
+ *  File Type:  C Header File  
  *
  *  Program:    C library to create graphs, a very powerful and useful mathematical tool used to describe, for example, 
  *              mathematical relations, computer networks, finite state machines, social media relations, etc...
@@ -14,20 +14,19 @@
  *                  - (UNARY) Vertex Contraction
  *                  - (UNARY) Edge Contraction
  *                  - (UNARY) Complement Graph
+ *                  - (UNARY) Minimum Spanning Tree (MST) with Dijkstra's Algorithm
  * 
  *                  - (BINARY) Disjoint Graph Union
  *                  - (BINARY) Cartesian Graph Product
- *                  - (BINARY) Tensor Graph Product
- *                  - (BINARY) Strong Graph Product
  *                  - (BINARY) Parallel Graph Composition
  *                  - (BINARY) Series Graph Composition
  * 
  *              For a more complete operations list, check this link: 
  *                  https://en.wikipedia.org/wiki/Graph_(discrete_mathematics)
  *
- *  
+ * 
  *  Made by:    Ransomware3301 (https://www.github.com/ransomware3301)
- *  Date:       14-03-2024
+ *  Date:       21-04-2024
  */
 
 
@@ -48,6 +47,8 @@
 #define NEWLINE_CHAR '\n'
 #define ZERO_CHAR '0'
 #define ERROR_ID 0
+#define DEFAULT_COPIED_EDGE_WEIGHT 0
+#define DEFAULT_COPIED_EDGE_LABEL "copied_edge"
 #define COMPLEMENTED_EDGE_DEFAULT_LABEL "complemented_edge"
 #define COMPLEMENTED_EDGE_DEFAULT_WEIGHT 0
 #define SERIES_EDGE_DEFAULT_LABEL "series_composition_edge"
@@ -105,10 +106,12 @@ id_list_t;
 /* Edge Definition */
 typedef struct graph_edge 
 {
-    int weight;
     id_t id;
+    int weight;
     char *label;
     id_t endpoint_ids[2];
+    /* For Dijkstra */
+    bool_t is_in_mst;
 }
 graph_edge_t;
 
@@ -128,6 +131,10 @@ typedef struct graph_node
     id_t id;
     char *label;
     graph_edge_list_t *edges;
+    /* For Dijkstra */
+    unsigned long int dist;
+    id_t prev_eid;
+    id_t prev_nid;
 }
 graph_node_t;
 
@@ -144,11 +151,12 @@ graph_t;
 /* ==== Global Variables ==== */
 
 
-extern id_t global_node_id;            /* Global index counter for nodes */
-id_list_t *revoked_node_ids;        /* Stack (FIFO) of node IDs that can be recycled for new nodes */
-
-extern id_t global_edge_id;            /* Global index counter for edges */
+extern id_t global_edge_id;         /* Global index counter for nodes */
 id_list_t *revoked_edge_ids;        /* Stack (FIFO) of edge IDs that can be recycled for new edges */
+
+
+extern id_t global_node_id;         /* Global index counter for nodes */
+id_list_t *revoked_node_ids;        /* Stack (FIFO) of node IDs that can be recycled for new nodes */
 
 
 /* ==== Function Declarations ==== */
@@ -157,6 +165,8 @@ id_list_t *revoked_edge_ids;        /* Stack (FIFO) of edge IDs that can be recy
 /* I/O */
 void                print_node_connections(graph_t*, graph_node_t*);
 void                print_graph(graph_t*);
+void                print_dijkstra(graph_t*, id_t);
+void                print_dijkstra_input(graph_t*);
 void                print_graph_matrix(graph_t*);
 void                print_all_node_ids(graph_t*);
 graph_edge_list_t * input_edge_list(id_t);
@@ -182,11 +192,12 @@ void           change_node_label(graph_t*, id_t, char*);
 void           change_edge_label(graph_t*, id_t, char*);
 graph_t *      change_duplicated_node_labels(graph_t*, char*);
 void           delete_edge_from_node(graph_t*, id_t, id_t);
+graph_t *      delete_all_duplicate_edges(graph_t*);
 
 
 /* Miscellaneous */
-id_t   set_node_id(void);
 id_t   set_edge_id(void);
+id_t   set_node_id(void);
 id_t   select_node_id(graph_t*, char*, char*);
 int    graph_dim(graph_t*);
 int    graph_dim_R(graph_t*);
@@ -194,8 +205,6 @@ int    edge_list_dim(graph_edge_list_t*);
 int    edge_list_dim_R(graph_edge_list_t*);
 int *  create_graph_matrix(graph_t*);
 int    autoloop_count(graph_edge_list_t*);
-bool_t exists_node_from_id(id_t);
-bool_t exists_edge_from_id(id_t);
 char * filter(char*, char);
 char * int_to_string(long int);
 char * strconcat(char*, char*);
@@ -232,6 +241,8 @@ bool_t      find_revoked_id_R(id_list_t*, id_t);
 graph_t * vertex_contraction(graph_t*, id_t, id_t);
 graph_t * vertex_contraction_input(graph_t*);
 graph_t * complement_graph(graph_t*);
+graph_t * dijkstra_mst(graph_t*, id_t);
+graph_t * dijkstra_mst_input(graph_t*);
 
 
 /* Binary Graph Operations */
