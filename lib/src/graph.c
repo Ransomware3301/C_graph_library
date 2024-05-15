@@ -1,5 +1,5 @@
 /*
- *  File Type:  C Header File  
+ *  File Type:  C Source File  
  *
  *  Program:    C library to create graphs, a very powerful and useful mathematical tool used to describe, for example, 
  *              mathematical relations, computer networks, finite state machines, social media relations, etc...
